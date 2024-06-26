@@ -2,10 +2,11 @@ use client_api::entity::AFUserProfile;
 use client_api::error::{AppResponseError, ErrorCode};
 use collab_entity::{CollabType, EncodedCollab};
 use database_entity::dto::{
-  AFUserWorkspaceInfo, AFWorkspace, BatchQueryCollabResult, QueryCollab, QueryCollabParams,
-  QueryCollabResult,
+  AFUserWorkspaceInfo, AFWorkspace, BatchQueryCollabResult, PublishCollabMetadata, QueryCollab,
+  QueryCollabParams, QueryCollabResult,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::collections::HashMap;
 use tsify::Tsify;
@@ -236,4 +237,127 @@ impl From<BatchQueryCollabResult> for BatchClientEncodeCollab {
 
     BatchClientEncodeCollab(hash_map)
   }
+}
+
+#[derive(Tsify, Serialize, Deserialize, Default, Debug)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct PublishViewMeta {
+  pub view_id: String,
+  pub publish_name: String,
+  pub metadata: PublishViewMetaData,
+}
+
+#[derive(Tsify, Serialize, Deserialize, Default, Debug)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct PublishViewMetaData {
+  pub view: PublishViewInfo,
+  pub child_views: Vec<PublishViewInfo>,
+  pub ancestor_views: Vec<PublishViewInfo>,
+}
+
+#[derive(Tsify, Serialize, Deserialize, Default, Debug)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct PublishViewInfo {
+  pub view_id: String,
+  pub name: String,
+  pub icon: Option<String>,
+  pub layout: i32,
+  pub extra: Option<String>,
+  pub created_by: Option<String>,
+  pub last_edited_by: Option<String>,
+  pub last_edited_time: String,
+  pub created_at: String,
+  pub child_views: Option<Vec<PublishViewInfo>>,
+}
+
+#[derive(Tsify, Serialize, Deserialize, Default, Debug)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct PublishViewPayload {
+  pub meta: PublishViewMeta,
+  /// The doc_state of the encoded collab.
+  pub data: Vec<u8>,
+}
+#[derive(Tsify, Serialize, Deserialize, Default, Debug)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct PublishInfo {
+  pub namespace: Option<String>,
+  pub publish_name: String,
+}
+
+from_struct_for_jsvalue!(PublishViewMeta);
+from_struct_for_jsvalue!(PublishViewMetaData);
+from_struct_for_jsvalue!(PublishViewPayload);
+from_struct_for_jsvalue!(PublishInfo);
+
+impl From<PublishCollabMetadata<serde_json::Value>> for PublishViewMeta {
+  fn from(value: PublishCollabMetadata<Value>) -> Self {
+    let view_id = value.view_id.to_string();
+    let publish_name = value.publish_name.to_string();
+    let metadata = PublishViewMetaData::from(value.metadata);
+    Self {
+      view_id,
+      publish_name,
+      metadata,
+    }
+  }
+}
+
+impl From<serde_json::Value> for PublishViewMetaData {
+  fn from(value: Value) -> Self {
+    let view = PublishViewInfo::from(value["view"].clone());
+    let child_views = parse_views(&value["child_views"]);
+    let ancestor_views = parse_views(&value["ancestor_views"]);
+    Self {
+      view,
+      child_views: child_views.unwrap_or_default(),
+      ancestor_views: ancestor_views.unwrap_or_default(),
+    }
+  }
+}
+
+fn match_serde_value_to_string(value: &Value) -> Option<String> {
+  match value {
+    Value::String(v) => Some(v.to_string()),
+    Value::Null => None,
+    v => Some(v.to_string()),
+  }
+}
+
+impl From<serde_json::Value> for PublishViewInfo {
+  fn from(value: Value) -> Self {
+    let view_id = match_serde_value_to_string(&value["view_id"]).unwrap_or_default();
+    let name = match_serde_value_to_string(&value["name"]).unwrap_or_default();
+    let icon = match_serde_value_to_string(&value["icon"]);
+    let layout = value["layout"]
+      .as_i64()
+      .map(|v| v as i32)
+      .unwrap_or_default();
+    let extra = match_serde_value_to_string(&value["extra"]);
+    let created_by = match_serde_value_to_string(&value["created_by"]);
+    let last_edited_by = match_serde_value_to_string(&value["last_edited_by"]);
+    let last_edited_time =
+      match_serde_value_to_string(&value["last_edited_time"]).unwrap_or_default();
+    let created_at = match_serde_value_to_string(&value["created_at"]).unwrap_or_default();
+    let child_views = parse_views(&value["child_views"]);
+    Self {
+      view_id,
+      name,
+      icon,
+      layout,
+      extra,
+      created_by,
+      last_edited_by,
+      last_edited_time,
+      created_at,
+      child_views,
+    }
+  }
+}
+
+fn parse_views(value: &Value) -> Option<Vec<PublishViewInfo>> {
+  value.as_array().map(|v| {
+    v.iter()
+      .map(|v| PublishViewInfo::from(v.clone()))
+      .collect::<Vec<_>>()
+  })
 }

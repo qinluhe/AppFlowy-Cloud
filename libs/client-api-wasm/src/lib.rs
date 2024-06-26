@@ -5,7 +5,9 @@ use crate::entities::*;
 use client_api::notify::TokenState;
 use client_api::{Client, ClientConfiguration};
 use std::sync::Arc;
+use uuid::Uuid;
 
+use client_api::error::ErrorCode;
 use database_entity::dto::QueryCollab;
 use wasm_bindgen::prelude::*;
 
@@ -157,6 +159,66 @@ impl ClientAPI {
   pub async fn get_user_workspace(&self) -> Result<UserWorkspace, ClientResponse> {
     match self.client.get_user_workspace_info().await {
       Ok(workspace_info) => Ok(UserWorkspace::from(workspace_info)),
+      Err(err) => Err(ClientResponse::from(err)),
+    }
+  }
+
+  pub async fn get_publish_view_meta(
+    &self,
+    publish_namspace: String,
+    publish_name: String,
+  ) -> Result<PublishViewMeta, ClientResponse> {
+    match self
+      .client
+      .get_published_collab::<serde_json::Value>(publish_namspace.as_str(), publish_name.as_str())
+      .await
+    {
+      Ok(data) => {
+        let metadata = PublishViewMetaData::from(data);
+        let view_id = metadata.view.view_id.clone();
+
+        Ok(PublishViewMeta {
+          metadata,
+          view_id,
+          publish_name,
+        })
+      },
+
+      Err(err) => Err(ClientResponse::from(err)),
+    }
+  }
+
+  pub async fn get_publish_view(
+    &self,
+    publish_namespace: String,
+    publish_name: String,
+  ) -> Result<PublishViewPayload, ClientResponse> {
+    let data = self
+      .client
+      .get_published_collab_blob(publish_namespace.as_str(), publish_name.as_str())
+      .await
+      .map_err(ClientResponse::from)?;
+
+    let meta = self
+      .get_publish_view_meta(publish_namespace, publish_name)
+      .await?;
+
+    Ok(PublishViewPayload {
+      meta,
+      data: data.to_vec(),
+    })
+  }
+
+  pub async fn get_publish_info(&self, view_id: String) -> Result<PublishInfo, ClientResponse> {
+    let view_id = Uuid::parse_str(view_id.as_str()).map_err(|err| ClientResponse {
+      code: ErrorCode::UuidError,
+      message: format!("Failed to parse view_id: {}", err),
+    })?;
+    match self.client.get_published_collab_info(&view_id).await {
+      Ok(info) => Ok(PublishInfo {
+        namespace: info.namespace,
+        publish_name: info.publish_name,
+      }),
       Err(err) => Err(ClientResponse::from(err)),
     }
   }
