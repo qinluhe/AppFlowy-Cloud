@@ -2,10 +2,7 @@ use client_api::entity::workspace_dto::FolderView;
 use client_api::entity::{AFUserProfile, AuthProvider};
 use client_api::error::{AppResponseError, ErrorCode};
 use collab_entity::{CollabType, EncodedCollab};
-use database_entity::dto::{
-  AFRole, AFUserWorkspaceInfo, AFWorkspace, AFWorkspaceMember, BatchQueryCollabResult, QueryCollab,
-  QueryCollabParams, QueryCollabResult,
-};
+use database_entity::dto::*;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::collections::HashMap;
@@ -370,3 +367,93 @@ pub struct DuplicatePublishViewPayload {
 }
 
 from_struct_for_jsvalue!(DuplicatePublishViewPayload);
+
+#[derive(Tsify, Serialize, Deserialize, Default, Debug)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct PublishGlobalComments {
+  pub comments: Vec<PublishGlobalComment>,
+}
+
+from_struct_for_jsvalue!(PublishGlobalComments);
+
+#[derive(Tsify, Serialize, Deserialize, Default, Debug)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct PublishGlobalComment {
+  pub comment_id: String,
+  pub user: Option<CommentUser>,
+  pub content: String,
+  pub created_at: String,
+  pub last_updated_at: String,
+  pub reply_comment_id: Option<String>,
+  pub is_deleted: bool,
+  pub can_be_deleted: bool,
+}
+
+from_struct_for_jsvalue!(PublishGlobalComment);
+
+#[derive(Tsify, Serialize, Deserialize, Default, Debug)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct CommentUser {
+  pub uuid: String,
+  pub name: String,
+  pub avatar_url: Option<String>,
+}
+
+from_struct_for_jsvalue!(CommentUser);
+
+impl From<AFWebUser> for CommentUser {
+  fn from(creator: AFWebUser) -> Self {
+    CommentUser {
+      uuid: creator.uuid.to_string(),
+      name: creator.name,
+      avatar_url: creator.avatar_url,
+    }
+  }
+}
+
+impl From<GlobalComment> for PublishGlobalComment {
+  fn from(comment: GlobalComment) -> Self {
+    PublishGlobalComment {
+      comment_id: comment.comment_id.to_string(),
+      user: comment.user.map(CommentUser::from),
+      content: comment.content,
+      created_at: comment.created_at.timestamp().to_string(),
+      last_updated_at: comment.last_updated_at.timestamp().to_string(),
+      reply_comment_id: comment.reply_comment_id.map(|id| id.to_string()),
+      is_deleted: comment.is_deleted,
+      can_be_deleted: comment.can_be_deleted,
+    }
+  }
+}
+
+#[derive(Tsify, Serialize, Deserialize, Default, Debug)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct CommentReactions {
+  pub reactions: Vec<CommentReaction>,
+}
+
+from_struct_for_jsvalue!(CommentReactions);
+
+#[derive(Tsify, Serialize, Deserialize, Default, Debug)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct CommentReaction {
+  pub reaction_type: String,
+  pub react_users: Vec<CommentUser>,
+  pub comment_id: String,
+}
+
+from_struct_for_jsvalue!(CommentReaction);
+
+impl From<Reaction> for CommentReaction {
+  fn from(reaction: Reaction) -> Self {
+    CommentReaction {
+      reaction_type: reaction.reaction_type,
+      react_users: reaction
+        .react_users
+        .into_iter()
+        .map(CommentUser::from)
+        .collect(),
+      comment_id: reaction.comment_id.to_string(),
+    }
+  }
+}

@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use client_api::error::ErrorCode;
 
-use client_api::entity::workspace_dto::PublishedDuplicate;
+use client_api::entity::workspace_dto::{PublishedDuplicate, QueryWorkspaceParam};
 use database_entity::dto::QueryCollab;
 use wasm_bindgen::prelude::*;
 
@@ -197,11 +197,16 @@ impl ClientAPI {
   }
 
   pub async fn get_workspaces(&self) -> Result<Workspaces, ClientResponse> {
-    match self.client.get_workspaces().await {
+    match self
+      .client
+      .get_workspaces_opt(QueryWorkspaceParam {
+        include_member_count: Some(true),
+      })
+      .await
+    {
       Ok(workspaces) => Ok(Workspaces {
         data: workspaces.into_iter().map(Workspace::from).collect(),
       }),
-
       Err(err) => Err(ClientResponse::from(err)),
     }
   }
@@ -319,6 +324,159 @@ impl ClientAPI {
         namespace: info.namespace,
         publish_name: info.publish_name,
       }),
+      Err(err) => Err(ClientResponse::from(err)),
+    }
+  }
+
+  pub async fn get_publish_view_comments(
+    &self,
+    view_id: String,
+  ) -> Result<PublishGlobalComments, ClientResponse> {
+    let view_id = Uuid::parse_str(view_id.as_str()).map_err(|err| ClientResponse {
+      code: ErrorCode::UuidError,
+      message: format!("Failed to parse view_id: {}", err),
+    })?;
+    match self.client.get_published_view_comments(&view_id).await {
+      Ok(data) => Ok(PublishGlobalComments {
+        comments: data
+          .comments
+          .into_iter()
+          .map(PublishGlobalComment::from)
+          .collect(),
+      }),
+      Err(err) => Err(ClientResponse::from(err)),
+    }
+  }
+
+  pub async fn create_comment_on_publish_view(
+    &self,
+    view_id: String,
+    content: String,
+    reply_comment_id: Option<String>,
+  ) -> Result<(), ClientResponse> {
+    let view_id = Uuid::parse_str(view_id.as_str()).map_err(|err| ClientResponse {
+      code: ErrorCode::UuidError,
+      message: format!("Failed to parse view_id: {}", err),
+    })?;
+    let reply_comment_id = reply_comment_id
+      .map(|id| {
+        Uuid::parse_str(id.as_str()).map_err(|err| ClientResponse {
+          code: ErrorCode::UuidError,
+          message: format!("Failed to parse reply_comment_id: {}", err),
+        })
+      })
+      .transpose()?;
+    match self
+      .client
+      .create_comment_on_published_view(&view_id, &content, &reply_comment_id)
+      .await
+    {
+      Ok(_) => Ok(()),
+      Err(err) => Err(ClientResponse::from(err)),
+    }
+  }
+
+  pub async fn delete_comment_on_publish_view(
+    &self,
+    view_id: String,
+    comment_id: String,
+  ) -> Result<(), ClientResponse> {
+    let view_id = Uuid::parse_str(view_id.as_str()).map_err(|err| ClientResponse {
+      code: ErrorCode::UuidError,
+      message: format!("Failed to parse view_id: {}", err),
+    })?;
+    let comment_id = Uuid::parse_str(comment_id.as_str()).map_err(|err| ClientResponse {
+      code: ErrorCode::UuidError,
+      message: format!("Failed to parse comment_id: {}", err),
+    })?;
+    match self
+      .client
+      .delete_comment_on_published_view(&view_id, &comment_id)
+      .await
+    {
+      Ok(_) => Ok(()),
+      Err(err) => Err(ClientResponse::from(err)),
+    }
+  }
+
+  pub async fn get_reactions(
+    &self,
+    view_id: String,
+    comment_id: Option<String>,
+  ) -> Result<CommentReactions, ClientResponse> {
+    let view_id = Uuid::parse_str(view_id.as_str()).map_err(|err| ClientResponse {
+      code: ErrorCode::UuidError,
+      message: format!("Failed to parse view_id: {}", err),
+    })?;
+    let comment_id = comment_id
+      .map(|id| {
+        Uuid::parse_str(id.as_str()).map_err(|err| ClientResponse {
+          code: ErrorCode::UuidError,
+          message: format!("Failed to parse comment_id: {}", err),
+        })
+      })
+      .transpose()?;
+    match self
+      .client
+      .get_published_view_reactions(&view_id, &comment_id)
+      .await
+    {
+      Ok(data) => Ok(CommentReactions {
+        reactions: data
+          .reactions
+          .into_iter()
+          .map(CommentReaction::from)
+          .collect(),
+      }),
+      Err(err) => Err(ClientResponse::from(err)),
+    }
+  }
+
+  pub async fn create_reaction(
+    &self,
+    view_id: String,
+    comment_id: String,
+    reaction_type: String,
+  ) -> Result<(), ClientResponse> {
+    let view_id = Uuid::parse_str(view_id.as_str()).map_err(|err| ClientResponse {
+      code: ErrorCode::UuidError,
+      message: format!("Failed to parse view_id: {}", err),
+    })?;
+    let comment_id = Uuid::parse_str(comment_id.as_str()).map_err(|err| ClientResponse {
+      code: ErrorCode::UuidError,
+      message: format!("Failed to parse comment_id: {}", err),
+    })?;
+    match self
+      .client
+      .create_reaction_on_comment(reaction_type.as_str(), &view_id, &comment_id)
+      .await
+    {
+      Ok(_) => Ok(()),
+      Err(err) => Err(ClientResponse::from(err)),
+    }
+  }
+
+  pub async fn delete_reaction(
+    &self,
+    view_id: String,
+    comment_id: String,
+    reaction_type: String,
+  ) -> Result<(), ClientResponse> {
+    let view_id = Uuid::parse_str(view_id.as_str()).map_err(|err| ClientResponse {
+      code: ErrorCode::UuidError,
+      message: format!("Failed to parse view_id: {}", err),
+    })?;
+    let comment_id = Uuid::parse_str(comment_id.as_str()).map_err(|err| ClientResponse {
+      code: ErrorCode::UuidError,
+      message: format!("Failed to parse comment_id: {}", err),
+    })?;
+
+    match self
+      .client
+      .delete_reaction_on_comment(&reaction_type, &view_id, &comment_id)
+      .await
+    {
+      Ok(_) => Ok(()),
       Err(err) => Err(ClientResponse::from(err)),
     }
   }
