@@ -1,9 +1,10 @@
+use client_api::entity::workspace_dto::FolderView;
 use client_api::entity::{AFUserProfile, AuthProvider};
 use client_api::error::{AppResponseError, ErrorCode};
 use collab_entity::{CollabType, EncodedCollab};
 use database_entity::dto::{
-  AFUserWorkspaceInfo, AFWorkspace, BatchQueryCollabResult, QueryCollab, QueryCollabParams,
-  QueryCollabResult,
+  AFRole, AFUserWorkspaceInfo, AFWorkspace, AFWorkspaceMember, BatchQueryCollabResult, QueryCollab,
+  QueryCollabParams, QueryCollabResult,
 };
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
@@ -109,6 +110,84 @@ impl From<AFUserWorkspaceInfo> for UserWorkspace {
 
 #[derive(Tsify, Serialize, Deserialize)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct Workspaces {
+  pub data: Vec<Workspace>,
+}
+
+from_struct_for_jsvalue!(Workspaces);
+
+#[derive(Tsify, Serialize, Deserialize)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct WorkspaceFolder {
+  pub view_id: String,
+  pub icon: Option<String>,
+  pub name: String,
+  pub is_space: bool,
+  pub is_private: bool,
+  pub extra: Option<String>,
+  pub children: Vec<WorkspaceFolder>,
+}
+
+from_struct_for_jsvalue!(WorkspaceFolder);
+
+impl From<FolderView> for WorkspaceFolder {
+  fn from(view: FolderView) -> Self {
+    WorkspaceFolder {
+      view_id: view.view_id,
+      icon: view
+        .icon
+        .map(|icon| serde_json::to_string(&icon).unwrap_or_default()),
+      name: view.name,
+      is_space: view.is_space,
+      is_private: view.is_private,
+      extra: view
+        .extra
+        .map(|extra| serde_json::to_string(&extra).unwrap_or_default()),
+      children: view
+        .children
+        .into_iter()
+        .map(WorkspaceFolder::from)
+        .collect(),
+    }
+  }
+}
+
+#[derive(Tsify, Serialize, Deserialize)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct Members {
+  pub data: Vec<Member>,
+}
+
+from_struct_for_jsvalue!(Members);
+
+#[derive(Tsify, Serialize, Deserialize)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct Member {
+  pub name: String,
+  pub email: String,
+  pub role: String,
+  pub avatar_url: Option<String>,
+}
+
+from_struct_for_jsvalue!(Member);
+
+impl From<AFWorkspaceMember> for Member {
+  fn from(profile: AFWorkspaceMember) -> Self {
+    Member {
+      name: profile.name,
+      email: profile.email,
+      role: match profile.role {
+        AFRole::Member => "Member".to_string(),
+        AFRole::Owner => "Owner".to_string(),
+        AFRole::Guest => "Guest".to_string(),
+      },
+      avatar_url: profile.avatar_url,
+    }
+  }
+}
+
+#[derive(Tsify, Serialize, Deserialize)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
 pub struct Workspace {
   pub workspace_id: String,
   pub database_storage_id: String,
@@ -118,6 +197,7 @@ pub struct Workspace {
   pub workspace_name: String,
   pub created_at: String,
   pub icon: String,
+  pub member_count: Option<i32>,
 }
 
 from_struct_for_jsvalue!(Workspace);
@@ -133,6 +213,7 @@ impl From<AFWorkspace> for Workspace {
       workspace_name: workspace.workspace_name,
       created_at: workspace.created_at.timestamp().to_string(),
       icon: workspace.icon,
+      member_count: workspace.member_count.map(|count| count as i32),
     }
   }
 }
@@ -277,3 +358,15 @@ pub struct OAuthURLResponse {
 }
 
 from_struct_for_jsvalue!(OAuthURLResponse);
+
+#[derive(Tsify, Serialize, Deserialize)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct DuplicatePublishViewPayload {
+  pub workspace_id: String,
+  #[tsify(type = "0 | 1 | 2 | 3 | 4 | 5 | 6")]
+  pub published_collab_type: i32,
+  pub published_view_id: String,
+  pub dest_view_id: String,
+}
+
+from_struct_for_jsvalue!(DuplicatePublishViewPayload);

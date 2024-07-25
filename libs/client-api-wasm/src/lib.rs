@@ -4,11 +4,13 @@ use crate::entities::*;
 
 use client_api::notify::TokenState;
 use client_api::{Client, ClientConfiguration};
+use collab_entity::CollabType;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use client_api::error::ErrorCode;
-use console_error_panic_hook;
+
+use client_api::entity::workspace_dto::PublishedDuplicate;
 use database_entity::dto::QueryCollab;
 use wasm_bindgen::prelude::*;
 
@@ -173,6 +175,64 @@ impl ClientAPI {
 
   pub fn restore_token(&self, token: &str) -> Result<(), ClientResponse> {
     match self.client.restore_token(token) {
+      Ok(_) => Ok(()),
+      Err(err) => Err(ClientResponse::from(err)),
+    }
+  }
+
+  pub async fn get_workspace_members(
+    &self,
+    workspace_id: String,
+  ) -> Result<Members, ClientResponse> {
+    match self
+      .client
+      .get_workspace_members(workspace_id.as_str())
+      .await
+    {
+      Ok(data) => Ok(Members {
+        data: data.into_iter().map(Member::from).collect(),
+      }),
+      Err(err) => Err(ClientResponse::from(err)),
+    }
+  }
+
+  pub async fn get_workspaces(&self) -> Result<Workspaces, ClientResponse> {
+    match self.client.get_workspaces().await {
+      Ok(workspaces) => Ok(Workspaces {
+        data: workspaces.into_iter().map(Workspace::from).collect(),
+      }),
+
+      Err(err) => Err(ClientResponse::from(err)),
+    }
+  }
+
+  pub async fn get_folder(&self, workspace_id: String) -> Result<WorkspaceFolder, ClientResponse> {
+    match self
+      .client
+      .get_workspace_folder(workspace_id.as_str())
+      .await
+    {
+      Ok(data) => Ok(WorkspaceFolder::from(data)),
+      Err(err) => Err(ClientResponse::from(err)),
+    }
+  }
+
+  pub async fn duplicate_publish_view(
+    &self,
+    payload: DuplicatePublishViewPayload,
+  ) -> Result<(), ClientResponse> {
+    let workspace_id = payload.workspace_id.as_str();
+    let params = PublishedDuplicate {
+      published_collab_type: CollabType::from(payload.published_collab_type),
+      published_view_id: payload.published_view_id.clone(),
+      dest_view_id: payload.dest_view_id.clone(),
+    };
+
+    match self
+      .client
+      .duplicate_published_to_workspace(workspace_id, &params)
+      .await
+    {
       Ok(_) => Ok(()),
       Err(err) => Err(ClientResponse::from(err)),
     }
